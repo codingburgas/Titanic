@@ -1,162 +1,160 @@
-# Titanic - Task Management System
+<!DOCTYPE html>
+<html>
+<body>
 
-C++ приложение за управление на задачи с графичен интерфейс (Dear ImGui).  
-Реализирано като учебен проект по програмиране — 9. клас.
+  <h1>Titanic</h1>
+  <img alt="e-schooler Logo" src="titanic.png" width="250px">
+  <p>C++ task management application with a graphical user interface (Dear ImGui).</p>
 
----
+  <hr>
 
-## Описание на проекта
+  <h2>📋 Description</h2>
+  <p><strong>Titanic</strong> is a task management system that allows users to:</p>
+  <ul>
+    <li><strong>Add</strong> tasks with title, description, priority, deadline, and duration.</li>
+    <li><strong>Sort</strong> tasks by priority (Bubble Sort) or by deadline (Bubble Sort).</li>
+    <li><strong>Search</strong> tasks by title (Linear Search).</li>
+    <li><strong>Filter</strong> tasks by status or priority.</li>
+    <li><strong>Recursively calculate</strong> total duration and the count of high-priority tasks.</li>
+    <li><strong>Mark</strong> tasks as completed.</li>
+    <li><strong>Edit</strong> and <strong>delete</strong> tasks.</li>
+    <li><strong>Auto-save</strong> data to <code>tasks.dat</code>.</li>
+  </ul>
 
-**Titanic** е система за управление на задачи, която позволява на потребителите да:
+  <hr>
 
-- **Добавят** задачи с заглавие, описание, приоритет, краен срок и продължителност
-- **Сортират** задачи по приоритет (Bubble Sort) или по краен срок (Bubble Sort)
-- **Търсят** задачи по заглавие (Linear Search)
-- **Филтрират** задачи по статус или приоритет
-- **Изчисляват рекурсивно** общото времетраене и броя задачи с висок приоритет
-- **Маркират** задачи като завършени
-- **Редактират** и **изтриват** задачи
-- **Запазват** данните автоматично в `tasks.dat`
+  <h2>📑 Table of Contents</h2>
+  <ul>
+    <li><a href="#repository-structure">Repository Structure</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#implemented-algorithms">Implemented Algorithms</a></li>
+    <li><a href="#tools-and-languages">Tools and Languages</a></li>
+    <li><a href="#team">Team</a></li>
+  </ul>
 
----
+  <hr>
 
-## Архитектура — Трислойна (Three-Tier)
-
-```
-┌─────────────────────────────────────┐
-│        Presentation Layer           │
-│         ui.h / ui.cpp               │
-│   (Dear ImGui — прозорци, таблици)  │
-└──────────────┬──────────────────────┘
-               │ извиква само
-┌──────────────▼──────────────────────┐
-│          Logic Layer                │
-│        logic.h / logic.cpp          │
-│  (сортиране, търсене, рекурсия,     │
-│   валидация, бизнес правила)        │
-└──────────────┬──────────────────────┘
-               │ извиква само
-┌──────────────▼──────────────────────┐
-│           Data Layer                │
-│         data.h / data.cpp           │
-│   (структура Task, списък, файл)    │
-└─────────────────────────────────────┘
-```
-
-> **Правило:** Presentation → Logic → Data. Никога не се прескача слой.
-
----
-
-## Структура на хранилището
-
-```
+  <h2 id="repository-structure">📂 Repository Structure</h2>
+  <pre>
 Titanic/
-├── src/
-│   ├── main.cpp        # Точка на влизане — GLFW + ImGui loop
-│   ├── data.cpp        # Data layer имплементация
-│   ├── logic.cpp       # Logic layer имплементация
-│   └── ui.cpp          # Presentation layer имплементация
-├── include/
-│   ├── data.h          # Структури и декларации за данните
-│   ├── logic.h         # Декларации на бизнес логиката
-│   └── ui.h            # Декларации на UI функциите
-├── deps/
-│   └── imgui/          # Dear ImGui (клонирай тук)
-├── docs/               # Допълнителна документация
-├── assets/             # Ресурси (изображения, икони)
-├── tests/              # Unit тестове
-├── CMakeLists.txt      # Build файл
-└── README.md
-```
+├── assets/             # Resources
+│   └── fonts/          # Fonts (FontAwesome, JetBrainsMono, Syne)
+├── deps/               # Dependencies
+│   ├── glfw/           # GLFW libraries and headers (lib-vc2022)
+│   └── imgui/          # Dear ImGui source code and backends
+├── include/            # Header files
+│   ├── data.h          # Data structures and declarations
+│   ├── logic.h         # Business logic declarations
+│   └── ui.h            # UI function declarations
+├── src/                # Source code
+│   ├── main.cpp        # Entry point — GLFW + ImGui loop
+│   ├── data.cpp        # Data layer implementation
+│   ├── logic.cpp       # Logic layer implementation
+│   └── ui.cpp          # Presentation layer implementation
+├── out/                # Build artifacts
+│   └── build/          # Build directory
+├── docs/               # Additional documentation
+├── tests/              # Unit tests
+├── CMakeLists.txt      # CMake configuration
+└── CppProperties.json  # IntelliSense configuration (MSVC)
+  </pre>
 
----
+  <hr>
 
-## Инсталация и стартиране
+  <h2 id="features">🚀 Features</h2>
+  <ul>
+    <li>Interactive task tracking interface</li>
+    <li>Recursive logic for statistics: <code>totalDurationRecursive()</code> and <code>countHighPriorityRecursive()</code></li>
+    <li>Persistent storage using pipe-separated <code>tasks.dat</code></li>
+    <li>Dynamic UI with custom font integration (FontAwesome & JetBrainsMono)</li>
+  </ul>
 
-### Изисквания
+  <hr>
 
-- CMake ≥ 3.16
-- C++17 компилатор (GCC, Clang или MSVC)
-- GLFW3
-- OpenGL
+  <h2 id="implemented-algorithms">⚙️ Implemented Algorithms</h2>
+  <table width="100%">
+    <thead>
+      <tr align="left">
+        <th>Algorithm</th>
+        <th>Description</th>
+        <th>File</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Bubble Sort (Priority)</strong></td>
+        <td>Sorts tasks by priority level</td>
+        <td><code>logic.cpp</code></td>
+      </tr>
+      <tr>
+        <td><strong>Bubble Sort (Deadline)</strong></td>
+        <td>Sorts tasks by YYYY-DD-MM date</td>
+        <td><code>logic.cpp</code></td>
+      </tr>
+      <tr>
+        <td><strong>Linear Search</strong></td>
+        <td>Searches by title (case-insensitive)</td>
+        <td><code>logic.cpp</code></td>
+      </tr>
+      <tr>
+        <td><strong>Recursion - Sum</strong></td>
+        <td>Calculates total duration of all tasks</td>
+        <td><code>logic.cpp</code></td>
+      </tr>
+      <tr>
+        <td><strong>Recursion - Counter</strong></td>
+        <td>Counts tasks with HIGH priority</td>
+        <td><code>logic.cpp</code></td>
+      </tr>
+    </tbody>
+  </table>
 
-### Стъпки
+  <hr>
 
-**1. Клонирай проекта**
-```bash
-git clone https://github.com/<your-team>/Titanic.git
-cd Titanic
-```
+  <h2 id="tools-and-languages">🛠️ Tools and Languages</h2>
+  <p>
+<a href="https://visualstudio.microsoft.com/"><img src="https://img.icons8.com/fluency/48/000000/visual-studio.png" alt="Visual Studio"/></a>
+<a href="https://www.microsoft.com/en-ww/microsoft-365/word"><img src="https://img.icons8.com/fluency/48/000000/microsoft-word-2019.png" alt="MS Word logo" width=48px /></a>
+<a href="https://www.microsoft.com/en-us/microsoft-365/powerpoint"><img src="https://img.icons8.com/fluency/48/000000/microsoft-powerpoint-2019.png" alt="MS PowerPoint logo" width=48px /></a>
+<a href="https://github.com"><img src="https://cdn-icons-png.flaticon.com/512/25/25231.png" alt="GitHub" height=48px width=48px/></a>
+<a href="https://teams.microsoft.com/"><img src="https://img.icons8.com/?size=100&id=zQ92KI7XjZgR&format=png&color=000000" alt="Teams" width="48px"></a>
+<a href="https://www.cplusplus.com/"><img src="https://img.icons8.com/color/48/000000/c-plus-plus-logo.png" alt="C++"/></a>
+  </p>
 
-**2. Изтегли Dear ImGui**
-```bash
-mkdir -p deps
-git clone https://github.com/ocornut/imgui.git deps/imgui
-```
+  <hr>
 
-**3. Конфигурирай и компилирай**
-```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
-```
+  <h2 id="team">👤 Team</h2>
+  <table border="1" cellpadding="5">
+    <thead>
+      <tr align="left">
+        <th>Name</th>
+        <th>Role</th>
+        <th>Class</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Dara Sokrateva</strong></td>
+        <td><strong>Scrum Master</strong></td>
+        <td>9A</td>
+      </tr>
+      <tr>
+        <td><strong>Bozhidar Stanev</strong></td>
+        <td><strong>Front-end Developer</strong></td>
+        <td>9B</td>
+      </tr>
+      <tr>
+        <td><strong>Rosica Velkova </strong></td>
+        <td><strong>Back-end Developer</strong></td>
+        <td>9A</td>
+      </tr>
+      <tr>
+        <td><strong>Nikoleta Georgieva </strong></td>
+        <td><strong>Quality Inspector</strong></td>
+        <td>9A</td>
+      </tr>
+    </tbody>
+  </table>
 
-**4. Стартирай**
-```bash
-./Titanic        # Linux / macOS
-Titanic.exe      # Windows
-```
-
----
-
-## Реализирани алгоритми
-
-| Алгоритъм | Описание | Файл |
-|-----------|----------|------|
-| Bubble Sort (приоритет) | Сортира по ниво на приоритет | `logic.cpp` |
-| Bubble Sort (срок) | Сортира по дата YYYY-MM-DD | `logic.cpp` |
-| Linear Search | Търси по заглавие (case-insensitive) | `logic.cpp` |
-| Рекурсия — сума | `totalDurationRecursive()` изчислява общо времетраене | `logic.cpp` |
-| Рекурсия — брояч | `countHighPriorityRecursive()` брои HIGH задачи | `logic.cpp` |
-
----
-
-## Роли в екипа
-
-| Роля | Отговорност |
-|------|-------------|
-| Scrum Master | GitHub Projects, комити, pull requests, документация |
-| Back-End Developer 1 | `data.h / data.cpp` — структури и файлова система |
-| Back-End Developer 2 | `logic.h / logic.cpp` — алгоритми и валидация |
-| Front-End Developer | `ui.h / ui.cpp` — Dear ImGui интерфейс |
-
----
-
-## Sprint план
-
-### Sprint 1 — Инфраструктура
-- [ ] Настройка на GitHub хранилище
-- [ ] Интеграция на Dear ImGui
-- [ ] Имплементация на Data слоя
-
-### Sprint 2 — Бизнес логика
-- [ ] Сортиращи алгоритми
-- [ ] Алгоритми за търсене
-- [ ] Рекурсивни функции
-
-### Sprint 3 — Потребителски интерфейс
-- [ ] Основен прозорец и таблица
-- [ ] Форма за добавяне
-- [ ] Търсене и филтри
-
-### Sprint 4 — Финализация
-- [ ] Тестване
-- [ ] Документация
-- [ ] Презентация
-
----
-
-## Запазване на данни
-
-Задачите се записват автоматично в `tasks.dat` при всяка промяна.  
-Форматът е pipe-separated: `id|title|description|priority|deadline|duration|completed`
+</body>
+</html>
