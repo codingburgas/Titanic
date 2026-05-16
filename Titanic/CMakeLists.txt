@@ -39,3 +39,8 @@ if(WIN32)
         opengl32
     )
 endif()
+add_custom_command(TARGET Titanic POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:Titanic>/assets"
+)

@@ -1,18 +1,12 @@
-/*
- * data.cpp
- * Data layer implementation.
- * Manages the in-memory task list and file persistence.
- */
-
 #include "data.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
 
-// ---- Internal state ----
+ // ---- Internal state ----
 
-static std::vector<Task> taskList;  // In-memory task storage
-static int nextId = 1;              // Auto-increment ID counter
+static std::vector<Task> taskList;
+static int nextId = 1;
 
 // ---- Function implementations ----
 
@@ -21,8 +15,8 @@ std::vector<Task>& getAllTasks() {
 }
 
 int addTask(const Task& task) {
-    Task newTask  = task;
-    newTask.id    = nextId++;
+    Task newTask = task;
+    newTask.id = nextId++;
     taskList.push_back(newTask);
     return newTask.id;
 }
@@ -53,10 +47,10 @@ int getNextId() {
 
 std::string priorityToString(Priority p) {
     switch (p) {
-        case Priority::HIGH:   return "HIGH";
-        case Priority::MEDIUM: return "MEDIUM";
-        case Priority::LOW:    return "LOW";
-        default:               return "LOW";
+    case Priority::HIGH:   return "HIGH";
+    case Priority::MEDIUM: return "MEDIUM";
+    case Priority::LOW:    return "LOW";
+    default:               return "LOW";
     }
 }
 
@@ -77,13 +71,13 @@ void saveTasksToFile(const std::string& filename) {
     file << nextId << "\n";
 
     for (const auto& task : taskList) {
-        file << task.id          << "|"
-             << task.title       << "|"
-             << task.description << "|"
-             << priorityToString(task.priority) << "|"
-             << task.deadline    << "|"
-             << task.duration    << "|"
-             << (task.completed ? 1 : 0) << "\n";
+        file << task.id << "|"
+            << task.title << "|"
+            << task.description << "|"
+            << priorityToString(task.priority) << "|"
+            << task.deadline << "|"
+            << task.duration << "|"
+            << (task.completed ? 1 : 0) << "\n";
     }
 }
 
@@ -109,13 +103,13 @@ void loadTasksFromFile(const std::string& filename) {
         Task task;
 
         // Parse pipe-separated fields
-        std::getline(ss, token, '|'); task.id          = std::stoi(token);
-        std::getline(ss, token, '|'); task.title        = token;
-        std::getline(ss, token, '|'); task.description  = token;
-        std::getline(ss, token, '|'); task.priority     = stringToPriority(token);
-        std::getline(ss, token, '|'); task.deadline     = token;
-        std::getline(ss, token, '|'); task.duration     = std::stoi(token);
-        std::getline(ss, token, '|'); task.completed    = (token == "1");
+        std::getline(ss, token, '|'); task.id = std::stoi(token);
+        std::getline(ss, token, '|'); task.title = token;
+        std::getline(ss, token, '|'); task.description = token;
+        std::getline(ss, token, '|'); task.priority = stringToPriority(token);
+        std::getline(ss, token, '|'); task.deadline = token;
+        std::getline(ss, token, '|'); task.duration = std::stoi(token);
+        std::getline(ss, token, '|'); task.completed = (token == "1");
 
         taskList.push_back(task);
     }
