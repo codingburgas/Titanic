@@ -3,7 +3,7 @@
 <body>
 
   <h1>Titanic</h1>
-  <img alt="e-schooler Logo" src="titanic.png" width="250px">
+  <img alt="Titanic Logo" src="titanic.png" width="250px">
   <p>C++ task management application with a graphical user interface (Dear ImGui).</p>
 
   <hr>
@@ -135,7 +135,7 @@ Titanic/
     <tbody>
       <tr>
         <td><strong>Dara Sokrateva</strong></td>
-        <td><strong>Scrum Master</strong></td>
+        <td><strong>Scrum Trainer</strong></td>
         <td>9A</td>
       </tr>
       <tr>
