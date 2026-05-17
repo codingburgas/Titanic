@@ -9,6 +9,14 @@ enum class Priority {
     HIGH = 3
 };
 
+// Recurrence type
+enum class RecurType {
+    NONE = 0,
+    DAILY = 1,
+    WEEKLY = 2,
+    MONTHLY = 3
+};
+
 // Task structure
 struct Task {
     int id;
@@ -19,9 +27,12 @@ struct Task {
     int duration;
     bool completed;
 
-    // This is a constructor: it initializes the variables correctly
+    // Recurrence
+    RecurType   recurType;      
+    int         recurOriginId; 
     Task() : id(0), title(""), description(""), priority(Priority::MEDIUM),
-        deadline("2026-01-01"), duration(0), completed(false) {
+        deadline("2026-01-01"), duration(0), completed(false),
+        recurType(RecurType::NONE), recurOriginId(0) {
     }
 };
 
@@ -35,3 +46,8 @@ void saveTasksToFile(const std::string& filename);
 void loadTasksFromFile(const std::string& filename);
 std::string priorityToString(Priority p);
 Priority stringToPriority(const std::string& s);
+
+std::string recurTypeToString(RecurType r);
+RecurType   stringToRecurType(const std::string& s);
+
+void spawnDueRecurringTasks();

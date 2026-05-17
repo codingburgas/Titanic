@@ -2,11 +2,13 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <ctime>
+#include <algorithm>
 
  // ---- Internal state ----
 
-static std::vector<Task> taskList;
-static int nextId = 1;
+static std::vector<Task> taskList; 
+static int nextId = 1;     
 
 // ---- Function implementations ----
 
@@ -60,6 +62,86 @@ Priority stringToPriority(const std::string& s) {
     return Priority::LOW;
 }
 
+std::string recurTypeToString(RecurType r) {
+    switch (r) {
+    case RecurType::DAILY:   return "DAILY";
+    case RecurType::WEEKLY:  return "WEEKLY";
+    case RecurType::MONTHLY: return "MONTHLY";
+    default:                 return "NONE";
+    }
+}
+
+RecurType stringToRecurType(const std::string& s) {
+    if (s == "DAILY")   return RecurType::DAILY;
+    if (s == "WEEKLY")  return RecurType::WEEKLY;
+    if (s == "MONTHLY") return RecurType::MONTHLY;
+    return RecurType::NONE;
+}
+
+// ---- Date arithmetic helpers ----
+
+static std::string todayStr() {
+    time_t t = time(nullptr);
+    tm* now = localtime(&t);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+        now->tm_year + 1900, now->tm_mon + 1, now->tm_mday);
+    return buf;
+}
+
+static bool parseDate(const std::string& s, int& y, int& m, int& d) {
+    if (s.length() != 10) return false;
+    y = std::stoi(s.substr(0, 4));
+    m = std::stoi(s.substr(5, 2));
+    d = std::stoi(s.substr(8, 2));
+    return true;
+}
+static std::string formatDate(int y, int m, int d) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d", y, m, d);
+    return buf;
+}
+
+// Advance a date by one recurrence period
+static std::string advanceDeadline(const std::string& dl, RecurType rt) {
+    int y, m, d;
+    if (!parseDate(dl, y, m, d)) return dl;
+
+    tm t = {};
+    t.tm_year = y - 1900;
+    t.tm_mon = m - 1;
+    t.tm_mday = d;
+
+    switch (rt) {
+    case RecurType::DAILY:   t.tm_mday += 1;  break;
+    case RecurType::WEEKLY:  t.tm_mday += 7;  break;
+    case RecurType::MONTHLY: t.tm_mon += 1;  break;
+    default: break;
+    }
+    mktime(&t); 
+    return formatDate(t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+}
+
+void spawnDueRecurringTasks() {
+    std::string today = todayStr();
+    std::vector<Task*> templates;
+    for (auto& task : taskList)
+        if (task.recurType != RecurType::NONE && task.recurOriginId == 0)
+            templates.push_back(&task);
+
+    for (Task* tmpl : templates) {
+        while (!tmpl->deadline.empty() && tmpl->deadline <= today) {
+            Task copy = *tmpl;
+            copy.id = nextId++;
+            copy.completed = false;
+            copy.recurType = RecurType::NONE;   
+            copy.recurOriginId = tmpl->id;     
+            taskList.push_back(copy);
+            tmpl->deadline = advanceDeadline(tmpl->deadline, tmpl->recurType);
+        }
+    }
+}
+
 void saveTasksToFile(const std::string& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
@@ -77,14 +159,16 @@ void saveTasksToFile(const std::string& filename) {
             << priorityToString(task.priority) << "|"
             << task.deadline << "|"
             << task.duration << "|"
-            << (task.completed ? 1 : 0) << "\n";
+            << (task.completed ? 1 : 0) << "|"
+            << recurTypeToString(task.recurType) << "|"
+            << task.recurOriginId << "\n";
     }
 }
 
 void loadTasksFromFile(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
-        return; // File doesn't exist yet - that's OK
+        return;
     }
 
     taskList.clear();
@@ -110,6 +194,10 @@ void loadTasksFromFile(const std::string& filename) {
         std::getline(ss, token, '|'); task.deadline = token;
         std::getline(ss, token, '|'); task.duration = std::stoi(token);
         std::getline(ss, token, '|'); task.completed = (token == "1");
+        if (std::getline(ss, token, '|'))
+            task.recurType = stringToRecurType(token);
+        if (std::getline(ss, token, '|'))
+            task.recurOriginId = std::stoi(token);
 
         taskList.push_back(task);
     }

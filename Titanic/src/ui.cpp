@@ -9,30 +9,26 @@
 #include <cstdio>
 #include <algorithm>
 
-// ---- Pallete helpers ----
+ // ---- Palette helpers ----
 static inline ImVec4 hex(float r, float g, float b, float a = 1.f)
 {
     return { r, g, b, a };
 }
 
 namespace C {
-    // Backgrounds
     static const ImVec4 BG0 = hex(0.055f, 0.059f, 0.078f);
     static const ImVec4 BG1 = hex(0.078f, 0.082f, 0.114f);
     static const ImVec4 BG2 = hex(0.110f, 0.118f, 0.169f);
     static const ImVec4 BG3 = hex(0.141f, 0.149f, 0.220f);
-    // Accents
-    static const ImVec4 ACC = hex(0.486f, 0.416f, 0.969f);        // violet
-    static const ImVec4 ACC2 = hex(0.655f, 0.545f, 0.980f);        // soft violet
+    static const ImVec4 ACC = hex(0.486f, 0.416f, 0.969f);      
+    static const ImVec4 ACC2 = hex(0.655f, 0.545f, 0.980f);     
     static const ImVec4 TEAL = hex(0.176f, 0.831f, 0.749f);
     static const ImVec4 AMB = hex(0.984f, 0.749f, 0.141f);
     static const ImVec4 RED = hex(0.973f, 0.443f, 0.443f);
     static const ImVec4 GRN = hex(0.290f, 0.871f, 0.502f);
-    // Text
-    static const ImVec4 T1 = hex(0.910f, 0.902f, 1.000f);        // primary text
-    static const ImVec4 T2 = hex(0.608f, 0.600f, 0.722f);        // muted text
-    static const ImVec4 T3 = hex(0.361f, 0.353f, 0.471f);        // hint text
-    // Transparent accents
+    static const ImVec4 T1 = hex(0.910f, 0.902f, 1.000f);     
+    static const ImVec4 T2 = hex(0.608f, 0.600f, 0.722f);     
+    static const ImVec4 T3 = hex(0.361f, 0.353f, 0.471f);     
     static const ImVec4 ACC_DIM = hex(0.486f, 0.416f, 0.969f, 0.18f);
     static const ImVec4 RED_DIM = hex(0.973f, 0.443f, 0.443f, 0.15f);
     static const ImVec4 AMB_DIM = hex(0.984f, 0.749f, 0.141f, 0.15f);
@@ -40,7 +36,7 @@ namespace C {
     static const ImVec4 TRANS = hex(0.f, 0.f, 0.f, 0.f);
 }
 
-// ---- Font Awesome  ----
+// ---- Font Awesome ----
 #define ICON_FA_PLUS          u8"\uf067"
 #define ICON_FA_TRASH         u8"\uf2ed"
 #define ICON_FA_PENCIL        u8"\uf303"
@@ -61,17 +57,19 @@ namespace C {
 #define ICON_FA_LEAF          u8"\uf06c"
 #define ICON_FA_ADJUST        u8"\uf042"
 #define ICON_FA_DIAMOND       u8"\uf219"
+#define ICON_FA_REPEAT        u8"\uf363"
 
 // ---- UI state ----
 
 static char  g_newTitle[128] = "";
 static char  g_newDesc[256] = "";
-static char  g_newDeadline[16] = "2026-20-05";
+static char  g_newDeadline[16] = "2026-01-01";
 static int   g_newDuration = 30;
-static int   g_newPriIdx = 1;
+static int   g_newPriIdx = 1; 
+static int   g_newRecurIdx = 0; 
 
 static char  g_searchQuery[128] = "";
-static int   g_filterMode = 0; 
+static int   g_filterMode = 0;  
 
 static std::string g_feedback = "";
 static bool        g_feedbackOk = true;
@@ -86,13 +84,32 @@ static char  g_editDesc[256] = "";
 static char  g_editDeadline[16] = "";
 static int   g_editDuration = 0;
 static int   g_editPriIdx = 0;
+static int   g_editRecurIdx = 0;  
 
 static ImFont* g_fontBody = nullptr;
 static ImFont* g_fontMono = nullptr;
-static ImFont* g_fontIcons = nullptr;
+static ImFont* g_fontIcons = nullptr;  
 
 // ---- Helpers ----
 static const char* PRIORITY_LABELS[] = { "LOW", "MEDIUM", "HIGH" };
+static const char* RECUR_LABELS[] = { "None", "Daily", "Weekly", "Monthly" };
+
+static RecurType indexToRecurType(int i) {
+    switch (i) {
+    case 1:  return RecurType::DAILY;
+    case 2:  return RecurType::WEEKLY;
+    case 3:  return RecurType::MONTHLY;
+    default: return RecurType::NONE;
+    }
+}
+static int recurTypeToIndex(RecurType r) {
+    switch (r) {
+    case RecurType::DAILY:   return 1;
+    case RecurType::WEEKLY:  return 2;
+    case RecurType::MONTHLY: return 3;
+    default:                 return 0;
+    }
+}
 
 static Priority indexToPriority(int i) {
     switch (i) { case 0: return Priority::LOW; case 2: return Priority::HIGH; }
@@ -114,9 +131,9 @@ static ImVec4 priorityDimColor(Priority p) {
     return C::GRN_DIM;
 }
 static const char* priorityIcon(Priority p) {
-    if (p == Priority::HIGH)   return ICON_FA_FIRE    "  HIGH";
-    if (p == Priority::MEDIUM) return ICON_FA_ADJUST  "  MED";
-    return                            ICON_FA_LEAF    "  LOW";
+    if (p == Priority::HIGH)   return ICON_FA_FIRE   "  HIGH";
+    if (p == Priority::MEDIUM) return ICON_FA_ADJUST "  MED";
+    return                            ICON_FA_LEAF   "  LOW";
 }
 
 // Push a solid-colored small button style
@@ -136,7 +153,7 @@ static void pushActionButton(bool danger = false) {
 }
 static void popActionButton() { ImGui::PopStyleColor(4); }
 
-// Coloured badge 
+// Coloured badge (draws a rounded rect behind the text)
 static void badge(const char* label, ImVec4 textCol, ImVec4 bgCol) {
     ImVec2 size = ImGui::CalcTextSize(label);
     float padX = 7.f, padY = 3.f;
@@ -228,7 +245,7 @@ static void renderSidebar() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, C::BG1);
     ImGui::BeginChild("##sidebar", { 220.f, 0.f }, true);
 
-    // --- Logo ---
+    // Logo
     ImGui::Spacing();
     ImGui::TextColored(C::ACC2, ICON_FA_DIAMOND);
     ImGui::SameLine();
@@ -237,16 +254,17 @@ static void renderSidebar() {
     ImGui::Spacing();
     colorSeparator();
 
-    // --- Navigation ---
+    // Navigation
     ImGui::TextColored(C::T3, "VIEWS");
     ImGui::Spacing();
 
     const struct { const char* icon; const char* label; int mode; } navItems[] = {
-        { ICON_FA_LIST,         "All Tasks",    0 },
-        { ICON_FA_FIRE,         "High Priority",1 },
-        { ICON_FA_CALENDAR,     "By Deadline",  2 },
-        { ICON_FA_CIRCLE_CHECK, "Completed",    3 },
-        { ICON_FA_HOURGLASS,    "Pending",      4 },
+        { ICON_FA_LIST,         "All Tasks",     0 },
+        { ICON_FA_FIRE,         "High Priority", 1 },
+        { ICON_FA_CALENDAR,     "By Deadline",   2 },
+        { ICON_FA_CIRCLE_CHECK, "Completed",     3 },
+        { ICON_FA_HOURGLASS,    "Pending",       4 },
+        { ICON_FA_REPEAT,       "Recurring",     5 },
     };
 
     for (auto& item : navItems) {
@@ -305,7 +323,7 @@ static void renderSidebar() {
         ImGui::PopStyleColor(4);
     }
 
-    // --- Mini stats at bottom ---
+    // Mini stats at bottom
     const std::vector<Task>& all = getAllTasks();
     int total = (int)all.size();
     int completed = (int)filterByStatus(true).size();
@@ -313,13 +331,12 @@ static void renderSidebar() {
     int highCnt = countHighPriorityRecursive(all);
     int totalMin = totalDurationRecursive(all);
 
-    // Push sidebar to bottom
     float remaining = ImGui::GetContentRegionAvail().y - 140.f;
     if (remaining > 0) ImGui::Dummy({ 0, remaining });
 
     colorSeparator();
 
-    // 2×2 mini-stat grid
+    // 2x2 mini-stat grid
     auto miniStat = [&](const char* num, const char* lbl, ImVec4 col) {
         ImGui::BeginGroup();
         ImGui::TextColored(col, "%s", num);
@@ -338,7 +355,7 @@ static void renderSidebar() {
     miniStat(buf, "Pending", C::AMB);
     ImGui::SameLine(0, 28);
     snprintf(buf, sizeof(buf), "%d", highCnt);
-    miniStat(buf, "High prio", C::RED);
+    miniStat(buf, "High priority", C::RED);
 
     ImGui::Spacing();
     snprintf(buf, sizeof(buf), "%d h %d m", totalMin / 60, totalMin % 60);
@@ -348,7 +365,7 @@ static void renderSidebar() {
     ImGui::Spacing();
 
     ImGui::EndChild();
-    ImGui::PopStyleColor(); // ChildBg
+    ImGui::PopStyleColor();
 }
 
 // ---- Top bar ----
@@ -356,14 +373,14 @@ static void renderTopBar() {
     // Search
     ImGui::SetNextItemWidth(300.f);
     ImGui::PushStyleColor(ImGuiCol_FrameBg, C::BG2);
-    if (ImGui::InputTextWithHint("##search", ICON_FA_SEARCH "  Search tasks by title…",
+    if (ImGui::InputTextWithHint("##search", ICON_FA_SEARCH "  Search tasks by title...",
         g_searchQuery, sizeof(g_searchQuery))) {
         if (g_searchQuery[0] != '\0') g_filterMode = 0;
     }
     ImGui::PopStyleColor();
     ImGui::SameLine(0, 12);
 
-    // Filter radio tabs
+    // Filter tabs
     const char* tabLabels[] = { "All", "Priority", "Deadline", "Done", "Pending" };
     for (int i = 0; i < 5; ++i) {
         bool active = (g_filterMode == i && g_searchQuery[0] == '\0');
@@ -419,6 +436,7 @@ static void renderProgressBar() {
     ImGui::PopStyleColor(2);
     ImGui::Spacing();
 }
+
 // ---- Add-task collapsible panel ----
 static void renderAddTaskPanel() {
     if (!g_showAddPanel) return;
@@ -438,7 +456,7 @@ static void renderAddTaskPanel() {
     ImGui::InputTextWithHint("##d", "Description", g_newDesc, sizeof(g_newDesc));
 
     ImGui::SetNextItemWidth(140.f);
-    ImGui::InputTextWithHint("##dl", "Deadline YYYY-DD-MM", g_newDeadline, sizeof(g_newDeadline));
+    ImGui::InputTextWithHint("##dl", "Deadline YYYY-MM-DD", g_newDeadline, sizeof(g_newDeadline));
     ImGui::SameLine(0, 12);
     ImGui::SetNextItemWidth(120.f);
     ImGui::InputInt("Duration (min)##add", &g_newDuration);
@@ -446,6 +464,13 @@ static void renderAddTaskPanel() {
     ImGui::SameLine(0, 12);
     ImGui::SetNextItemWidth(120.f);
     ImGui::Combo("Priority##add", &g_newPriIdx, PRIORITY_LABELS, 3);
+    ImGui::SameLine(0, 12);
+    ImGui::SetNextItemWidth(120.f);
+    ImGui::Combo("Recurs##add", &g_newRecurIdx, RECUR_LABELS, 4);
+    if (g_newRecurIdx != 0) {
+        ImGui::SameLine(0, 8);
+        ImGui::TextColored(C::ACC2, ICON_FA_REPEAT "  Template task - copies created automatically");
+    }
 
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
@@ -456,15 +481,25 @@ static void renderAddTaskPanel() {
             indexToPriority(g_newPriIdx),
             g_newDeadline, g_newDuration);
         if (id > 0) {
-            g_feedback = std::string(ICON_FA_CHECK "  Task created — ID: ") + std::to_string(id);
+            // Apply recurrence to the new task
+            if (g_newRecurIdx != 0) {
+                for (auto& t : getAllTasks()) {
+                    if (t.id == id) {
+                        t.recurType = indexToRecurType(g_newRecurIdx);
+                        t.recurOriginId = 0;
+                        break;
+                    }
+                }
+            }
+            g_feedback = std::string(ICON_FA_CHECK "  Task created - ID: ") + std::to_string(id);
             g_feedbackOk = true;
             saveTasksToFile("tasks.dat");
             g_newTitle[0] = '\0'; g_newDesc[0] = '\0';
-            g_newDuration = 30;   g_newPriIdx = 1;
+            g_newDuration = 30;   g_newPriIdx = 1; g_newRecurIdx = 0;
             g_showAddPanel = false;
         }
         else {
-            g_feedback = ICON_FA_XMARK "  Invalid data — check all required fields.";
+            g_feedback = ICON_FA_XMARK "  Invalid data - check all required fields.";
             g_feedbackOk = false;
         }
     }
@@ -477,7 +512,7 @@ static void renderAddTaskPanel() {
     ImGui::Spacing();
 }
 
-// ---- Task Table ----
+// ---- Task table ----
 static void renderTaskTable() {
     // Build task list
     std::vector<Task> tasks;
@@ -491,6 +526,12 @@ static void renderTaskTable() {
         case 2:  tasks = getTasksSortedByDeadline(); break;
         case 3:  tasks = filterByStatus(true);        break;
         case 4:  tasks = filterByStatus(false);       break;
+        case 5:
+            // Show only recurring template tasks
+            for (const auto& t : getAllTasks())
+                if (t.recurType != RecurType::NONE && t.recurOriginId == 0)
+                    tasks.push_back(t);
+            break;
         default: tasks = getAllTasks();                break;
         }
     }
@@ -536,6 +577,21 @@ static void renderTaskTable() {
         else
             ImGui::TextColored(C::T1, "%s", task.title.c_str());
 
+        // Recurring badge shown inline after the title
+        if (task.recurType != RecurType::NONE) {
+            ImGui::SameLine(0, 8);
+            const char* rl;
+            if (task.recurOriginId == 0) {
+                if (task.recurType == RecurType::DAILY)  rl = ICON_FA_REPEAT "  Daily";
+                else if (task.recurType == RecurType::WEEKLY) rl = ICON_FA_REPEAT "  Weekly";
+                else                                          rl = ICON_FA_REPEAT "  Monthly";
+            }
+            else {
+                rl = ICON_FA_REPEAT "  copy";
+            }
+            badge(rl, C::ACC2, C::ACC_DIM);
+        }
+
         ImGui::TableSetColumnIndex(2);
         badge(priorityIcon(task.priority),
             priorityColor(task.priority),
@@ -543,7 +599,7 @@ static void renderTaskTable() {
 
         ImGui::TableSetColumnIndex(3);
         ImGui::TextColored(C::T2, "%s",
-            task.deadline.empty() ? "—" : task.deadline.c_str());
+            task.deadline.empty() ? "-" : task.deadline.c_str());
 
         ImGui::TableSetColumnIndex(4);
         ImGui::TextColored(C::T2, "%d min", task.duration);
@@ -578,6 +634,7 @@ static void renderTaskTable() {
             g_editTask = task;
             g_editMode = true;
             g_editPriIdx = priorityToIndex(task.priority);
+            g_editRecurIdx = recurTypeToIndex(task.recurType);
             g_editDuration = task.duration;
             std::strncpy(g_editTitle, task.title.c_str(), sizeof(g_editTitle) - 1);
             std::strncpy(g_editDesc, task.description.c_str(), sizeof(g_editDesc) - 1);
@@ -623,13 +680,18 @@ static void renderEditModal() {
         ImGui::InputTextWithHint("##ed", "Description", g_editDesc, sizeof(g_editDesc));
 
         ImGui::SetNextItemWidth(160.f);
-        ImGui::InputTextWithHint("##edl", "Deadline YYYY-DD-MM", g_editDeadline, sizeof(g_editDeadline));
+        ImGui::InputTextWithHint("##edl", "Deadline YYYY-MM-DD", g_editDeadline, sizeof(g_editDeadline));
         ImGui::SameLine(0, 12);
         ImGui::SetNextItemWidth(120.f);
         ImGui::InputInt("Duration (min)##edit", &g_editDuration);
         if (g_editDuration < 1) g_editDuration = 1;
         ImGui::SetNextItemWidth(140.f);
         ImGui::Combo("Priority##edit", &g_editPriIdx, PRIORITY_LABELS, 3);
+        ImGui::SameLine(0, 12);
+        ImGui::SetNextItemWidth(130.f);
+        ImGui::Combo("Recurs##edit", &g_editRecurIdx, RECUR_LABELS, 4);
+        if (g_editRecurIdx != 0)
+            ImGui::TextColored(C::ACC2, ICON_FA_REPEAT "  Recurring template");
 
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
@@ -641,6 +703,7 @@ static void renderEditModal() {
             g_editTask.deadline = g_editDeadline;
             g_editTask.duration = g_editDuration;
             g_editTask.priority = indexToPriority(g_editPriIdx);
+            g_editTask.recurType = indexToRecurType(g_editRecurIdx);
 
             std::string err = validateTask(g_editTask);
             if (err.empty()) {
@@ -672,7 +735,7 @@ static void renderStatsWindow() {
     if (!g_showStats) return;
 
     ImGui::SetNextWindowSize({ 380.f, 280.f }, ImGuiCond_Once);
-    ImGui::SetNextWindowPos({ 880.f, 80.f }, ImGuiCond_Once);
+    ImGui::SetNextWindowPos({ 880.f,  80.f }, ImGuiCond_Once);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, C::BG1);
     if (ImGui::Begin(ICON_FA_CHART_PIE "  Statistics", &g_showStats)) {
         const std::vector<Task>& all = getAllTasks();
@@ -768,12 +831,13 @@ void uiInit() {
     io.Fonts->Build();
 
     loadTasksFromFile("tasks.dat");
+    spawnDueRecurringTasks(); 
 }
 
 void uiRender() {
     ImGuiIO& io = ImGui::GetIO();
 
-    // --- Main full-screen ---
+    // Main full-screen window (no title bar, no padding)
     ImGui::SetNextWindowPos({ 0.f, 0.f });
     ImGui::SetNextWindowSize(io.DisplaySize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.f, 0.f });
@@ -786,16 +850,15 @@ void uiRender() {
         ImGuiWindowFlags_NoSavedSettings);
     ImGui::PopStyleVar();
 
-    // --- Sidebar + content split ---
+    // Sidebar + content split
     renderSidebar();
     ImGui::SameLine(0, 0);
 
-    // --- Main content panel ---
+    // Main content panel
     ImGui::PushStyleColor(ImGuiCol_ChildBg, C::BG0);
     ImGui::BeginChild("##content", { 0.f, 0.f }, false);
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 16.f, 12.f });
-    // Top bar
     renderTopBar();
     ImGui::PopStyleVar();
 
@@ -812,7 +875,7 @@ void uiRender() {
 
     ImGui::End();
 
-    // --- Floating windows ---
+    // Floating windows
     renderEditModal();
     renderStatsWindow();
 }
