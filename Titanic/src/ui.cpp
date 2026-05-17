@@ -1,11 +1,4 @@
-/*
- * ui.cpp
- * Presentation layer implementation.
- * Renders all ImGui windows. Calls only logic layer functions.
- * Does NOT access data layer directly.
- */
-
-#include "ui.h"
+﻿#include "ui.h"
 #include "logic.h"
 #include "data.h"
 
@@ -13,361 +6,814 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <cstdio>
+#include <algorithm>
 
-// ---- UI State ----
+// ---- Pallete helpers ----
+static inline ImVec4 hex(float r, float g, float b, float a = 1.f)
+{
+    return { r, g, b, a };
+}
 
-// Add Task form fields
-static char  newTitle[128]       = "";
-static char  newDescription[256] = "";
-static char  newDeadline[16]     = "2025-12-31";
-static int   newDuration         = 30;
-static int   newPriorityIndex    = 1; // 0=LOW, 1=MEDIUM, 2=HIGH
+namespace C {
+    // Backgrounds
+    static const ImVec4 BG0 = hex(0.055f, 0.059f, 0.078f);
+    static const ImVec4 BG1 = hex(0.078f, 0.082f, 0.114f);
+    static const ImVec4 BG2 = hex(0.110f, 0.118f, 0.169f);
+    static const ImVec4 BG3 = hex(0.141f, 0.149f, 0.220f);
+    // Accents
+    static const ImVec4 ACC = hex(0.486f, 0.416f, 0.969f);        // violet
+    static const ImVec4 ACC2 = hex(0.655f, 0.545f, 0.980f);        // soft violet
+    static const ImVec4 TEAL = hex(0.176f, 0.831f, 0.749f);
+    static const ImVec4 AMB = hex(0.984f, 0.749f, 0.141f);
+    static const ImVec4 RED = hex(0.973f, 0.443f, 0.443f);
+    static const ImVec4 GRN = hex(0.290f, 0.871f, 0.502f);
+    // Text
+    static const ImVec4 T1 = hex(0.910f, 0.902f, 1.000f);        // primary text
+    static const ImVec4 T2 = hex(0.608f, 0.600f, 0.722f);        // muted text
+    static const ImVec4 T3 = hex(0.361f, 0.353f, 0.471f);        // hint text
+    // Transparent accents
+    static const ImVec4 ACC_DIM = hex(0.486f, 0.416f, 0.969f, 0.18f);
+    static const ImVec4 RED_DIM = hex(0.973f, 0.443f, 0.443f, 0.15f);
+    static const ImVec4 AMB_DIM = hex(0.984f, 0.749f, 0.141f, 0.15f);
+    static const ImVec4 GRN_DIM = hex(0.290f, 0.871f, 0.502f, 0.12f);
+    static const ImVec4 TRANS = hex(0.f, 0.f, 0.f, 0.f);
+}
 
-// Search field
-static char  searchQuery[128] = "";
+// ---- Font Awesome  ----
+#define ICON_FA_PLUS          u8"\uf067"
+#define ICON_FA_TRASH         u8"\uf2ed"
+#define ICON_FA_PENCIL        u8"\uf303"
+#define ICON_FA_CHECK         u8"\uf00c"
+#define ICON_FA_SEARCH        u8"\uf002"
+#define ICON_FA_CHART_PIE     u8"\uf200"
+#define ICON_FA_LIST          u8"\uf03a"
+#define ICON_FA_FLAG          u8"\uf024"
+#define ICON_FA_CALENDAR      u8"\uf073"
+#define ICON_FA_CLOCK         u8"\uf017"
+#define ICON_FA_FIRE          u8"\uf06d"
+#define ICON_FA_CIRCLE_CHECK  u8"\uf058"
+#define ICON_FA_HOURGLASS     u8"\uf252"
+#define ICON_FA_FLOPPY        u8"\uf0c7"
+#define ICON_FA_ROTATE        u8"\uf2f1"
+#define ICON_FA_XMARK         u8"\uf00d"
+#define ICON_FA_BOLT          u8"\uf0e7"
+#define ICON_FA_LEAF          u8"\uf06c"
+#define ICON_FA_ADJUST        u8"\uf042"
+#define ICON_FA_DIAMOND       u8"\uf219"
 
-// Filter state
-static int   filterMode = 0; // 0=All, 1=Priority, 2=Deadline, 3=Completed, 4=Pending
+// ---- UI state ----
 
-// Error / feedback messages
-static std::string feedbackMsg  = "";
-static bool        feedbackIsOk = true;
+static char  g_newTitle[128] = "";
+static char  g_newDesc[256] = "";
+static char  g_newDeadline[16] = "2026-20-05";
+static int   g_newDuration = 30;
+static int   g_newPriIdx = 1;
 
-// Stats window toggle
-static bool showStats = false;
+static char  g_searchQuery[128] = "";
+static int   g_filterMode = 0; 
 
-// Edit task state
-static bool editMode    = false;
-static Task editingTask = {};
-static char editTitle[128]       = "";
-static char editDescription[256] = "";
-static char editDeadline[16]     = "";
-static int  editDuration         = 0;
-static int  editPriorityIndex    = 0;
+static std::string g_feedback = "";
+static bool        g_feedbackOk = true;
 
-// Priority label helper
+static bool  g_showStats = false;
+static bool  g_showAddPanel = false;
+
+static bool  g_editMode = false;
+static Task  g_editTask = {};
+static char  g_editTitle[128] = "";
+static char  g_editDesc[256] = "";
+static char  g_editDeadline[16] = "";
+static int   g_editDuration = 0;
+static int   g_editPriIdx = 0;
+
+static ImFont* g_fontBody = nullptr;
+static ImFont* g_fontMono = nullptr;
+static ImFont* g_fontIcons = nullptr;
+
+// ---- Helpers ----
 static const char* PRIORITY_LABELS[] = { "LOW", "MEDIUM", "HIGH" };
 
-static Priority indexToPriority(int idx) {
-    switch (idx) {
-        case 0: return Priority::LOW;
-        case 1: return Priority::MEDIUM;
-        case 2: return Priority::HIGH;
-        default: return Priority::MEDIUM;
-    }
+static Priority indexToPriority(int i) {
+    switch (i) { case 0: return Priority::LOW; case 2: return Priority::HIGH; }
+                       return Priority::MEDIUM;
 }
-
 static int priorityToIndex(Priority p) {
-    switch (p) {
-        case Priority::LOW:    return 0;
-        case Priority::MEDIUM: return 1;
-        case Priority::HIGH:   return 2;
-        default:               return 1;
-    }
+    if (p == Priority::LOW)  return 0;
+    if (p == Priority::HIGH) return 2;
+    return 1;
 }
-
-// Priority color helper
 static ImVec4 priorityColor(Priority p) {
-    switch (p) {
-        case Priority::HIGH:   return ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // Red
-        case Priority::MEDIUM: return ImVec4(1.0f, 0.8f, 0.1f, 1.0f); // Yellow
-        case Priority::LOW:    return ImVec4(0.4f, 0.9f, 0.4f, 1.0f); // Green
-        default:               return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-    }
+    if (p == Priority::HIGH)   return C::RED;
+    if (p == Priority::MEDIUM) return C::AMB;
+    return C::GRN;
+}
+static ImVec4 priorityDimColor(Priority p) {
+    if (p == Priority::HIGH)   return C::RED_DIM;
+    if (p == Priority::MEDIUM) return C::AMB_DIM;
+    return C::GRN_DIM;
+}
+static const char* priorityIcon(Priority p) {
+    if (p == Priority::HIGH)   return ICON_FA_FIRE    "  HIGH";
+    if (p == Priority::MEDIUM) return ICON_FA_ADJUST  "  MED";
+    return                            ICON_FA_LEAF    "  LOW";
 }
 
-// ---- UI Sections ----
+// Push a solid-colored small button style
+static void pushActionButton(bool danger = false) {
+    if (danger) {
+        ImGui::PushStyleColor(ImGuiCol_Button, hex(0.973f, 0.443f, 0.443f, 0.14f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hex(0.973f, 0.443f, 0.443f, 0.30f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, hex(0.973f, 0.443f, 0.443f, 0.50f));
+        ImGui::PushStyleColor(ImGuiCol_Text, C::RED);
+    }
+    else {
+        ImGui::PushStyleColor(ImGuiCol_Button, C::BG3);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC_DIM);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, C::ACC);
+        ImGui::PushStyleColor(ImGuiCol_Text, C::T2);
+    }
+}
+static void popActionButton() { ImGui::PopStyleColor(4); }
 
-static void renderAddTaskPanel() {
-    ImGui::SeparatorText("Add New Task");
+// Coloured badge 
+static void badge(const char* label, ImVec4 textCol, ImVec4 bgCol) {
+    ImVec2 size = ImGui::CalcTextSize(label);
+    float padX = 7.f, padY = 3.f;
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(
+        ImVec2(pos.x - padX, pos.y - padY),
+        ImVec2(pos.x + size.x + padX, pos.y + size.y + padY),
+        ImGui::ColorConvertFloat4ToU32(bgCol), 5.f
+    );
+    ImGui::TextColored(textCol, "%s", label);
+}
 
-    ImGui::InputText("Title##add",       newTitle,       sizeof(newTitle));
-    ImGui::InputText("Description##add", newDescription, sizeof(newDescription));
-    ImGui::InputText("Deadline (YYYY-MM-DD)##add", newDeadline, sizeof(newDeadline));
-    ImGui::InputInt("Duration (minutes)##add", &newDuration);
-    ImGui::Combo("Priority##add", &newPriorityIndex, PRIORITY_LABELS, 3);
+// Full-width horizontal separator with colour
+static void colorSeparator(ImVec4 col = C::ACC_DIM) {
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddLine(
+        p0, { p0.x + ImGui::GetContentRegionAvail().x, p0.y },
+        ImGui::ColorConvertFloat4ToU32(col), 1.f
+    );
+    ImGui::Dummy({ 0, 4.f });
+}
 
-    if (ImGui::Button("Add Task", ImVec2(120, 0))) {
-        int id = createTask(
-            std::string(newTitle),
-            std::string(newDescription),
-            indexToPriority(newPriorityIndex),
-            std::string(newDeadline),
-            newDuration
-        );
+// ---- Apply global ImGui style ----
+static void applyStyle() {
+    ImGuiStyle& s = ImGui::GetStyle();
 
-        if (id > 0) {
-            feedbackMsg  = "Task added successfully! (ID: " + std::to_string(id) + ")";
-            feedbackIsOk = true;
+    s.WindowRounding = 0.f;
+    s.ChildRounding = 10.f;
+    s.FrameRounding = 7.f;
+    s.PopupRounding = 10.f;
+    s.ScrollbarRounding = 6.f;
+    s.GrabRounding = 4.f;
+    s.TabRounding = 7.f;
+    s.WindowBorderSize = 0.f;
+    s.ChildBorderSize = 1.f;
+    s.FrameBorderSize = 0.f;
+    s.PopupBorderSize = 1.f;
+    s.ItemSpacing = { 10.f, 8.f };
+    s.ItemInnerSpacing = { 6.f, 4.f };
+    s.FramePadding = { 10.f, 6.f };
+    s.WindowPadding = { 16.f, 14.f };
+    s.IndentSpacing = 18.f;
+    s.ScrollbarSize = 10.f;
+    s.CellPadding = { 8.f, 6.f };
+
+    ImVec4* c = s.Colors;
+    c[ImGuiCol_WindowBg] = C::BG0;
+    c[ImGuiCol_ChildBg] = C::BG1;
+    c[ImGuiCol_PopupBg] = C::BG1;
+    c[ImGuiCol_Border] = hex(0.486f, 0.416f, 0.969f, 0.18f);
+    c[ImGuiCol_FrameBg] = C::BG2;
+    c[ImGuiCol_FrameBgHovered] = C::BG3;
+    c[ImGuiCol_FrameBgActive] = C::BG3;
+    c[ImGuiCol_TitleBg] = C::BG1;
+    c[ImGuiCol_TitleBgActive] = C::BG1;
+    c[ImGuiCol_TitleBgCollapsed] = C::BG0;
+    c[ImGuiCol_MenuBarBg] = C::BG1;
+    c[ImGuiCol_ScrollbarBg] = C::BG0;
+    c[ImGuiCol_ScrollbarGrab] = C::BG3;
+    c[ImGuiCol_ScrollbarGrabHovered] = hex(0.486f, 0.416f, 0.969f, 0.4f);
+    c[ImGuiCol_ScrollbarGrabActive] = C::ACC;
+    c[ImGuiCol_CheckMark] = C::ACC2;
+    c[ImGuiCol_SliderGrab] = C::ACC;
+    c[ImGuiCol_SliderGrabActive] = C::ACC2;
+    c[ImGuiCol_Button] = C::BG3;
+    c[ImGuiCol_ButtonHovered] = C::ACC_DIM;
+    c[ImGuiCol_ButtonActive] = C::ACC;
+    c[ImGuiCol_Header] = C::ACC_DIM;
+    c[ImGuiCol_HeaderHovered] = hex(0.486f, 0.416f, 0.969f, 0.28f);
+    c[ImGuiCol_HeaderActive] = C::ACC;
+    c[ImGuiCol_Separator] = hex(0.486f, 0.416f, 0.969f, 0.18f);
+    c[ImGuiCol_Tab] = C::BG2;
+    c[ImGuiCol_TabHovered] = C::ACC_DIM;
+    c[ImGuiCol_TabActive] = hex(0.486f, 0.416f, 0.969f, 0.35f);
+    c[ImGuiCol_TableHeaderBg] = C::BG2;
+    c[ImGuiCol_TableBorderLight] = hex(0.486f, 0.416f, 0.969f, 0.10f);
+    c[ImGuiCol_TableBorderStrong] = hex(0.486f, 0.416f, 0.969f, 0.20f);
+    c[ImGuiCol_TableRowBg] = C::TRANS;
+    c[ImGuiCol_TableRowBgAlt] = hex(0.110f, 0.118f, 0.169f, 0.40f);
+    c[ImGuiCol_TextSelectedBg] = hex(0.486f, 0.416f, 0.969f, 0.35f);
+    c[ImGuiCol_Text] = C::T1;
+    c[ImGuiCol_TextDisabled] = C::T3;
+    c[ImGuiCol_ModalWindowDimBg] = hex(0.f, 0.f, 0.f, 0.65f);
+}
+
+// ---- Sidebar ----
+static void renderSidebar() {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, C::BG1);
+    ImGui::BeginChild("##sidebar", { 220.f, 0.f }, true);
+
+    // --- Logo ---
+    ImGui::Spacing();
+    ImGui::TextColored(C::ACC2, ICON_FA_DIAMOND);
+    ImGui::SameLine();
+    ImGui::TextColored(C::T1, " Titanic");
+    ImGui::TextColored(C::T3, "  Task Management System");
+    ImGui::Spacing();
+    colorSeparator();
+
+    // --- Navigation ---
+    ImGui::TextColored(C::T3, "VIEWS");
+    ImGui::Spacing();
+
+    const struct { const char* icon; const char* label; int mode; } navItems[] = {
+        { ICON_FA_LIST,         "All Tasks",    0 },
+        { ICON_FA_FIRE,         "High Priority",1 },
+        { ICON_FA_CALENDAR,     "By Deadline",  2 },
+        { ICON_FA_CIRCLE_CHECK, "Completed",    3 },
+        { ICON_FA_HOURGLASS,    "Pending",      4 },
+    };
+
+    for (auto& item : navItems) {
+        bool active = (g_filterMode == item.mode);
+        if (active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, C::ACC_DIM);
+            ImGui::PushStyleColor(ImGuiCol_Text, C::ACC2);
+        }
+        else {
+            ImGui::PushStyleColor(ImGuiCol_Button, C::TRANS);
+            ImGui::PushStyleColor(ImGuiCol_Text, C::T2);
+        }
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC_DIM);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, C::ACC);
+
+        std::string label = std::string(item.icon) + "  " + item.label;
+        if (ImGui::Button(label.c_str(), { 188.f, 32.f })) {
+            g_filterMode = item.mode;
+            g_searchQuery[0] = '\0';
+        }
+        ImGui::PopStyleColor(4);
+    }
+
+    ImGui::Spacing();
+    colorSeparator();
+    ImGui::TextColored(C::T3, "TOOLS");
+    ImGui::Spacing();
+
+    // Stats toggle
+    {
+        ImGui::PushStyleColor(ImGuiCol_Button, g_showStats ? C::ACC_DIM : C::TRANS);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC_DIM);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, C::ACC);
+        ImGui::PushStyleColor(ImGuiCol_Text, g_showStats ? C::ACC2 : C::T2);
+        if (ImGui::Button(ICON_FA_CHART_PIE "  Statistics", { 188.f, 32.f }))
+            g_showStats = !g_showStats;
+        ImGui::PopStyleColor(4);
+    }
+
+    // Save / Reload
+    {
+        ImGui::PushStyleColor(ImGuiCol_Button, C::TRANS);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC_DIM);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, C::ACC);
+        ImGui::PushStyleColor(ImGuiCol_Text, C::T2);
+        if (ImGui::Button(ICON_FA_FLOPPY "  Save", { 188.f, 32.f })) {
             saveTasksToFile("tasks.dat");
-            // Clear form
-            newTitle[0]       = '\0';
-            newDescription[0] = '\0';
-            newDuration       = 30;
-            newPriorityIndex  = 1;
-        } else {
-            feedbackMsg  = "Error: Invalid task data. Check all fields.";
-            feedbackIsOk = false;
+            g_feedback = ICON_FA_CHECK "  Tasks saved to tasks.dat";
+            g_feedbackOk = true;
+        }
+        if (ImGui::Button(ICON_FA_ROTATE "  Reload", { 188.f, 32.f })) {
+            loadTasksFromFile("tasks.dat");
+            g_feedback = ICON_FA_CHECK "  Tasks reloaded from tasks.dat";
+            g_feedbackOk = true;
+        }
+        ImGui::PopStyleColor(4);
+    }
+
+    // --- Mini stats at bottom ---
+    const std::vector<Task>& all = getAllTasks();
+    int total = (int)all.size();
+    int completed = (int)filterByStatus(true).size();
+    int pending = total - completed;
+    int highCnt = countHighPriorityRecursive(all);
+    int totalMin = totalDurationRecursive(all);
+
+    // Push sidebar to bottom
+    float remaining = ImGui::GetContentRegionAvail().y - 140.f;
+    if (remaining > 0) ImGui::Dummy({ 0, remaining });
+
+    colorSeparator();
+
+    // 2×2 mini-stat grid
+    auto miniStat = [&](const char* num, const char* lbl, ImVec4 col) {
+        ImGui::BeginGroup();
+        ImGui::TextColored(col, "%s", num);
+        ImGui::TextColored(C::T3, "%s", lbl);
+        ImGui::EndGroup();
+        };
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", total);
+    miniStat(buf, "Total tasks", C::T1);
+    ImGui::SameLine(0, 28);
+    snprintf(buf, sizeof(buf), "%d", completed);
+    miniStat(buf, "Done", C::TEAL);
+
+    snprintf(buf, sizeof(buf), "%d", pending);
+    miniStat(buf, "Pending", C::AMB);
+    ImGui::SameLine(0, 28);
+    snprintf(buf, sizeof(buf), "%d", highCnt);
+    miniStat(buf, "High prio", C::RED);
+
+    ImGui::Spacing();
+    snprintf(buf, sizeof(buf), "%d h %d m", totalMin / 60, totalMin % 60);
+    ImGui::TextColored(C::T3, "Total time: ");
+    ImGui::SameLine();
+    ImGui::TextColored(C::ACC2, "%s", buf);
+    ImGui::Spacing();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(); // ChildBg
+}
+
+// ---- Top bar ----
+static void renderTopBar() {
+    // Search
+    ImGui::SetNextItemWidth(300.f);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, C::BG2);
+    if (ImGui::InputTextWithHint("##search", ICON_FA_SEARCH "  Search tasks by title…",
+        g_searchQuery, sizeof(g_searchQuery))) {
+        if (g_searchQuery[0] != '\0') g_filterMode = 0;
+    }
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0, 12);
+
+    // Filter radio tabs
+    const char* tabLabels[] = { "All", "Priority", "Deadline", "Done", "Pending" };
+    for (int i = 0; i < 5; ++i) {
+        bool active = (g_filterMode == i && g_searchQuery[0] == '\0');
+        if (active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
+            ImGui::PushStyleColor(ImGuiCol_Text, C::T1);
+        }
+        else {
+            ImGui::PushStyleColor(ImGuiCol_Button, C::BG3);
+            ImGui::PushStyleColor(ImGuiCol_Text, C::T2);
+        }
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC_DIM);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, C::ACC);
+        if (ImGui::SmallButton(tabLabels[i])) {
+            g_filterMode = i;
+            g_searchQuery[0] = '\0';
+        }
+        ImGui::PopStyleColor(4);
+        ImGui::SameLine(0, 4);
+    }
+
+    // Spacer then Add Task button
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 110.f + ImGui::GetCursorPosX() - 4.f);
+    ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC2);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, hex(0.38f, 0.30f, 0.80f));
+    ImGui::PushStyleColor(ImGuiCol_Text, C::T1);
+    if (ImGui::Button(ICON_FA_PLUS "  Add Task", { 110.f, 0.f }))
+        g_showAddPanel = !g_showAddPanel;
+    ImGui::PopStyleColor(4);
+}
+
+// ---- Progress bar ----
+static void renderProgressBar() {
+    const std::vector<Task>& all = getAllTasks();
+    int total = (int)all.size();
+    int completed = (int)filterByStatus(true).size();
+    float ratio = total > 0 ? (float)completed / (float)total : 0.f;
+
+    ImGui::Spacing();
+
+    // Label row
+    char pctBuf[64];
+    snprintf(pctBuf, sizeof(pctBuf), "%d / %d tasks  (%.0f%%)", completed, total, ratio * 100.f);
+    ImGui::TextColored(C::T3, "Progress:");
+    ImGui::SameLine();
+    ImGui::TextColored(C::T2, "%s", pctBuf);
+
+    // Bar
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, C::ACC);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, C::BG3);
+    ImGui::ProgressBar(ratio, { -1.f, 6.f }, "");
+    ImGui::PopStyleColor(2);
+    ImGui::Spacing();
+}
+// ---- Add-task collapsible panel ----
+static void renderAddTaskPanel() {
+    if (!g_showAddPanel) return;
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, C::BG2);
+    ImGui::BeginChild("##addpanel", { 0.f, 160.f }, true);
+
+    ImGui::TextColored(C::ACC2, ICON_FA_PLUS "  New Task");
+    ImGui::Spacing();
+
+    float w = (ImGui::GetContentRegionAvail().x - 12.f) * 0.5f;
+
+    ImGui::SetNextItemWidth(w);
+    ImGui::InputTextWithHint("##t", "Title*", g_newTitle, sizeof(g_newTitle));
+    ImGui::SameLine(0, 12);
+    ImGui::SetNextItemWidth(w);
+    ImGui::InputTextWithHint("##d", "Description", g_newDesc, sizeof(g_newDesc));
+
+    ImGui::SetNextItemWidth(140.f);
+    ImGui::InputTextWithHint("##dl", "Deadline YYYY-DD-MM", g_newDeadline, sizeof(g_newDeadline));
+    ImGui::SameLine(0, 12);
+    ImGui::SetNextItemWidth(120.f);
+    ImGui::InputInt("Duration (min)##add", &g_newDuration);
+    if (g_newDuration < 1) g_newDuration = 1;
+    ImGui::SameLine(0, 12);
+    ImGui::SetNextItemWidth(120.f);
+    ImGui::Combo("Priority##add", &g_newPriIdx, PRIORITY_LABELS, 3);
+
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC2);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, hex(0.38f, 0.30f, 0.80f));
+    if (ImGui::Button(ICON_FA_PLUS "  Create Task", { 140.f, 0.f })) {
+        int id = createTask(g_newTitle, g_newDesc,
+            indexToPriority(g_newPriIdx),
+            g_newDeadline, g_newDuration);
+        if (id > 0) {
+            g_feedback = std::string(ICON_FA_CHECK "  Task created — ID: ") + std::to_string(id);
+            g_feedbackOk = true;
+            saveTasksToFile("tasks.dat");
+            g_newTitle[0] = '\0'; g_newDesc[0] = '\0';
+            g_newDuration = 30;   g_newPriIdx = 1;
+            g_showAddPanel = false;
+        }
+        else {
+            g_feedback = ICON_FA_XMARK "  Invalid data — check all required fields.";
+            g_feedbackOk = false;
         }
     }
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) g_showAddPanel = false;
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
 }
 
-static void renderSearchPanel() {
-    ImGui::SeparatorText("Search & Filter");
-
-    ImGui::InputText("Search by title", searchQuery, sizeof(searchQuery));
-
-    ImGui::RadioButton("All",       &filterMode, 0); ImGui::SameLine();
-    ImGui::RadioButton("Priority",  &filterMode, 1); ImGui::SameLine();
-    ImGui::RadioButton("Deadline",  &filterMode, 2); ImGui::SameLine();
-    ImGui::RadioButton("Completed", &filterMode, 3); ImGui::SameLine();
-    ImGui::RadioButton("Pending",   &filterMode, 4);
-}
-
-static void renderEditModal() {
-    if (!editMode) return;
-
-    ImGui::OpenPopup("Edit Task");
-    if (ImGui::BeginPopupModal("Edit Task", &editMode, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::InputText("Title##edit",       editTitle,       sizeof(editTitle));
-        ImGui::InputText("Description##edit", editDescription, sizeof(editDescription));
-        ImGui::InputText("Deadline##edit",    editDeadline,    sizeof(editDeadline));
-        ImGui::InputInt("Duration##edit",    &editDuration);
-        ImGui::Combo("Priority##edit",       &editPriorityIndex, PRIORITY_LABELS, 3);
-
-        if (ImGui::Button("Save", ImVec2(80, 0))) {
-            editingTask.title       = std::string(editTitle);
-            editingTask.description = std::string(editDescription);
-            editingTask.deadline    = std::string(editDeadline);
-            editingTask.duration    = editDuration;
-            editingTask.priority    = indexToPriority(editPriorityIndex);
-
-            std::string err = validateTask(editingTask);
-            if (err.empty()) {
-                updateTask(editingTask);
-                saveTasksToFile("tasks.dat");
-                feedbackMsg  = "Task updated successfully!";
-                feedbackIsOk = true;
-                editMode     = false;
-                ImGui::CloseCurrentPopup();
-            } else {
-                feedbackMsg  = "Error: " + err;
-                feedbackIsOk = false;
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(80, 0))) {
-            editMode = false;
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::EndPopup();
-    }
-}
-
+// ---- Task Table ----
 static void renderTaskTable() {
-    ImGui::SeparatorText("Task List");
-
-    // Build the task list based on filter and search
+    // Build task list
     std::vector<Task> tasks;
-    std::string query(searchQuery);
-
+    std::string query(g_searchQuery);
     if (!query.empty()) {
         tasks = searchByTitle(query);
-    } else {
-        switch (filterMode) {
-            case 1: tasks = getTasksSortedByPriority(); break;
-            case 2: tasks = getTasksSortedByDeadline(); break;
-            case 3: tasks = filterByStatus(true);        break;
-            case 4: tasks = filterByStatus(false);       break;
-            default: tasks = getAllTasks();               break;
+    }
+    else {
+        switch (g_filterMode) {
+        case 1:  tasks = getTasksSortedByPriority(); break;
+        case 2:  tasks = getTasksSortedByDeadline(); break;
+        case 3:  tasks = filterByStatus(true);        break;
+        case 4:  tasks = filterByStatus(false);       break;
+        default: tasks = getAllTasks();                break;
         }
     }
 
-    // Table
-    ImGuiTableFlags flags = ImGuiTableFlags_Borders
-                          | ImGuiTableFlags_RowBg
-                          | ImGuiTableFlags_ScrollY
-                          | ImGuiTableFlags_Resizable;
+    if (tasks.empty()) {
+        ImGui::Spacing();
+        ImGui::TextColored(C::T3, "  No tasks to display.");
+        return;
+    }
 
-    if (ImGui::BeginTable("TaskTable", 7, flags, ImVec2(0, 320))) {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("ID",          ImGuiTableColumnFlags_WidthFixed, 40);
-        ImGui::TableSetupColumn("Title",       ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Priority",    ImGuiTableColumnFlags_WidthFixed, 70);
-        ImGui::TableSetupColumn("Deadline",    ImGuiTableColumnFlags_WidthFixed, 100);
-        ImGui::TableSetupColumn("Duration",    ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("Status",      ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("Actions",     ImGuiTableColumnFlags_WidthFixed, 140);
-        ImGui::TableHeadersRow();
+    ImGuiTableFlags flags =
+        ImGuiTableFlags_Borders |
+        ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_ScrollY |
+        ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp;
 
-        for (const auto& task : tasks) {
-            ImGui::TableNextRow();
+    float tableH = ImGui::GetContentRegionAvail().y - 4.f;
+    if (!ImGui::BeginTable("##tasks", 7, flags, { 0.f, tableH })) return;
 
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%d", task.id);
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 40.f);
+    ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Priority", ImGuiTableColumnFlags_WidthFixed, 90.f);
+    ImGui::TableSetupColumn("Deadline", ImGuiTableColumnFlags_WidthFixed, 105.f);
+    ImGui::TableSetupColumn("Duration", ImGuiTableColumnFlags_WidthFixed, 80.f);
+    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.f);
+    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 148.f);
 
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(task.title.c_str());
+    // Styled header
+    ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, C::BG2);
+    ImGui::TableHeadersRow();
+    ImGui::PopStyleColor();
 
-            ImGui::TableSetColumnIndex(2);
-            ImGui::TextColored(priorityColor(task.priority),
-                               "%s", priorityToString(task.priority).c_str());
+    for (const auto& task : tasks) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextColored(C::T3, "#%03d", task.id);
 
-            ImGui::TableSetColumnIndex(3);
-            ImGui::TextUnformatted(task.deadline.empty() ? "-" : task.deadline.c_str());
+        ImGui::TableSetColumnIndex(1);
+        if (task.completed)
+            ImGui::TextColored(C::T3, "%s", task.title.c_str());
+        else
+            ImGui::TextColored(C::T1, "%s", task.title.c_str());
 
-            ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%d min", task.duration);
+        ImGui::TableSetColumnIndex(2);
+        badge(priorityIcon(task.priority),
+            priorityColor(task.priority),
+            priorityDimColor(task.priority));
 
-            ImGui::TableSetColumnIndex(5);
-            if (task.completed) {
-                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Done");
-            } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.1f, 1.0f), "Pending");
-            }
+        ImGui::TableSetColumnIndex(3);
+        ImGui::TextColored(C::T2, "%s",
+            task.deadline.empty() ? "—" : task.deadline.c_str());
 
-            ImGui::TableSetColumnIndex(6);
-            // Complete button
-            if (!task.completed) {
-                ImGui::PushID(task.id * 10 + 1);
-                if (ImGui::SmallButton("Complete")) {
-                    completeTask(task.id);
-                    saveTasksToFile("tasks.dat");
-                    feedbackMsg  = "Task marked as completed.";
-                    feedbackIsOk = true;
-                }
-                ImGui::PopID();
-                ImGui::SameLine();
-            }
+        ImGui::TableSetColumnIndex(4);
+        ImGui::TextColored(C::T2, "%d min", task.duration);
 
-            // Edit button
-            ImGui::PushID(task.id * 10 + 2);
-            if (ImGui::SmallButton("Edit")) {
-                editingTask      = task;
-                editMode         = true;
-                editPriorityIndex = priorityToIndex(task.priority);
-                editDuration     = task.duration;
-                std::strncpy(editTitle,       task.title.c_str(),       sizeof(editTitle) - 1);
-                std::strncpy(editDescription, task.description.c_str(), sizeof(editDescription) - 1);
-                std::strncpy(editDeadline,    task.deadline.c_str(),    sizeof(editDeadline) - 1);
-            }
-            ImGui::PopID();
-            ImGui::SameLine();
+        ImGui::TableSetColumnIndex(5);
+        if (task.completed)
+            badge(ICON_FA_CIRCLE_CHECK "  Done", C::TEAL, hex(0.176f, 0.831f, 0.749f, 0.12f));
+        else
+            badge(ICON_FA_HOURGLASS   "  Pending", C::AMB, hex(0.984f, 0.749f, 0.141f, 0.12f));
 
-            // Delete button
-            ImGui::PushID(task.id * 10 + 3);
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
-            if (ImGui::SmallButton("Delete")) {
-                deleteTask(task.id);
+        ImGui::TableSetColumnIndex(6);
+
+        // Complete
+        if (!task.completed) {
+            ImGui::PushID(task.id * 10 + 1);
+            pushActionButton(false);
+            if (ImGui::SmallButton(ICON_FA_CHECK)) {
+                completeTask(task.id);
                 saveTasksToFile("tasks.dat");
-                feedbackMsg  = "Task deleted.";
-                feedbackIsOk = true;
+                g_feedback = ICON_FA_CHECK "  Task marked as completed.";
+                g_feedbackOk = true;
             }
-            ImGui::PopStyleColor();
+            popActionButton();
             ImGui::PopID();
+            ImGui::SameLine(0, 4);
         }
 
-        ImGui::EndTable();
+        // Edit
+        ImGui::PushID(task.id * 10 + 2);
+        pushActionButton(false);
+        if (ImGui::SmallButton(ICON_FA_PENCIL)) {
+            g_editTask = task;
+            g_editMode = true;
+            g_editPriIdx = priorityToIndex(task.priority);
+            g_editDuration = task.duration;
+            std::strncpy(g_editTitle, task.title.c_str(), sizeof(g_editTitle) - 1);
+            std::strncpy(g_editDesc, task.description.c_str(), sizeof(g_editDesc) - 1);
+            std::strncpy(g_editDeadline, task.deadline.c_str(), sizeof(g_editDeadline) - 1);
+        }
+        popActionButton();
+        ImGui::PopID();
+        ImGui::SameLine(0, 4);
+
+        // Delete
+        ImGui::PushID(task.id * 10 + 3);
+        pushActionButton(true);
+        if (ImGui::SmallButton(ICON_FA_TRASH)) {
+            deleteTask(task.id);
+            saveTasksToFile("tasks.dat");
+            g_feedback = ICON_FA_TRASH "  Task deleted.";
+            g_feedbackOk = true;
+        }
+        popActionButton();
+        ImGui::PopID();
     }
+
+    ImGui::EndTable();
 }
 
-static void renderStatsWindow() {
-    if (!showStats) return;
+// ---- Edit modal ----
+static void renderEditModal() {
+    if (!g_editMode) return;
+    ImGui::OpenPopup("Edit Task##modal");
 
-    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_Once);
-    if (ImGui::Begin("Statistics", &showStats)) {
-        const std::vector<Task>& all = getAllTasks();
+    ImGui::SetNextWindowSize({ 480.f, 0.f }, ImGuiCond_Always);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, C::BG1);
+    if (ImGui::BeginPopupModal("Edit Task##modal", &g_editMode,
+        ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextColored(C::ACC2, ICON_FA_PENCIL "  Editing task #%d", g_editTask.id);
+        ImGui::Spacing();
+        colorSeparator();
 
-        int total     = static_cast<int>(all.size());
-        int completed = static_cast<int>(filterByStatus(true).size());
-        int pending   = total - completed;
-        int highCount = countHighPriorityRecursive(all);  // Recursive!
-        int totalMin  = totalDurationRecursive(all);       // Recursive!
+        float fw = ImGui::GetContentRegionAvail().x;
+        ImGui::SetNextItemWidth(fw);
+        ImGui::InputTextWithHint("##et", "Title*", g_editTitle, sizeof(g_editTitle));
+        ImGui::SetNextItemWidth(fw);
+        ImGui::InputTextWithHint("##ed", "Description", g_editDesc, sizeof(g_editDesc));
 
-        ImGui::SeparatorText("Overview");
-        ImGui::Text("Total tasks    : %d", total);
-        ImGui::Text("Completed      : %d", completed);
-        ImGui::Text("Pending        : %d", pending);
+        ImGui::SetNextItemWidth(160.f);
+        ImGui::InputTextWithHint("##edl", "Deadline YYYY-DD-MM", g_editDeadline, sizeof(g_editDeadline));
+        ImGui::SameLine(0, 12);
+        ImGui::SetNextItemWidth(120.f);
+        ImGui::InputInt("Duration (min)##edit", &g_editDuration);
+        if (g_editDuration < 1) g_editDuration = 1;
+        ImGui::SetNextItemWidth(140.f);
+        ImGui::Combo("Priority##edit", &g_editPriIdx, PRIORITY_LABELS, 3);
 
-        ImGui::SeparatorText("Recursive Calculations");
-        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
-                           "HIGH priority tasks: %d", highCount);
-        ImGui::Text("Total duration : %d min (%d h %d min)",
-                    totalMin, totalMin / 60, totalMin % 60);
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Button, C::ACC);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, C::ACC2);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, hex(0.38f, 0.30f, 0.80f));
+        if (ImGui::Button(ICON_FA_CHECK "  Save Changes", { 160.f, 0.f })) {
+            g_editTask.title = g_editTitle;
+            g_editTask.description = g_editDesc;
+            g_editTask.deadline = g_editDeadline;
+            g_editTask.duration = g_editDuration;
+            g_editTask.priority = indexToPriority(g_editPriIdx);
 
-        ImGui::SeparatorText("Progress");
-        if (total > 0) {
-            float ratio = static_cast<float>(completed) / static_cast<float>(total);
-            ImGui::ProgressBar(ratio, ImVec2(-1, 0));
-            ImGui::Text("%.0f%% complete", ratio * 100.0f);
-        } else {
-            ImGui::TextDisabled("No tasks yet.");
+            std::string err = validateTask(g_editTask);
+            if (err.empty()) {
+                updateTask(g_editTask);
+                saveTasksToFile("tasks.dat");
+                g_feedback = ICON_FA_CHECK "  Task updated successfully.";
+                g_feedbackOk = true;
+                g_editMode = false;
+                ImGui::CloseCurrentPopup();
+            }
+            else {
+                g_feedback = ICON_FA_XMARK "  " + err;
+                g_feedbackOk = false;
+            }
         }
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine(0, 10);
+        if (ImGui::Button("Cancel", { 80.f, 0.f })) {
+            g_editMode = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleColor();
+}
+
+// ---- Statistics window ----
+static void renderStatsWindow() {
+    if (!g_showStats) return;
+
+    ImGui::SetNextWindowSize({ 380.f, 280.f }, ImGuiCond_Once);
+    ImGui::SetNextWindowPos({ 880.f, 80.f }, ImGuiCond_Once);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, C::BG1);
+    if (ImGui::Begin(ICON_FA_CHART_PIE "  Statistics", &g_showStats)) {
+        const std::vector<Task>& all = getAllTasks();
+        int total = (int)all.size();
+        int done = (int)filterByStatus(true).size();
+        int pending = total - done;
+        int highCnt = countHighPriorityRecursive(all);
+        int totalMin = totalDurationRecursive(all);
+        float ratio = total > 0 ? (float)done / (float)total : 0.f;
+
+        colorSeparator();
+        ImGui::TextColored(C::T3, "OVERVIEW");
+        ImGui::Spacing();
+
+        auto row = [&](const char* label, const char* val, ImVec4 col) {
+            ImGui::TextColored(C::T2, "%-22s", label);
+            ImGui::SameLine();
+            ImGui::TextColored(col, "%s", val);
+            };
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%d", total);   row("Total tasks", buf, C::T1);
+        snprintf(buf, sizeof(buf), "%d", done);    row("Completed", buf, C::TEAL);
+        snprintf(buf, sizeof(buf), "%d", pending); row("Pending", buf, C::AMB);
+        snprintf(buf, sizeof(buf), "%d", highCnt); row("HIGH priority (rec)", buf, C::RED);
+        snprintf(buf, sizeof(buf), "%d h %d min", totalMin / 60, totalMin % 60);
+        row("Total duration (rec)", buf, C::ACC2);
+
+        ImGui::Spacing();
+        colorSeparator();
+        ImGui::TextColored(C::T3, "COMPLETION");
+        ImGui::Spacing();
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, C::ACC);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, C::BG3);
+        ImGui::ProgressBar(ratio, { -1.f, 10.f }, "");
+        ImGui::PopStyleColor(2);
+
+        ImGui::Spacing();
+        ImGui::TextColored(C::ACC2, "%.0f%%", ratio * 100.f);
+        ImGui::SameLine();
+        ImGui::TextColored(C::T2, " complete");
     }
     ImGui::End();
+    ImGui::PopStyleColor();
+}
+
+// ---- Feedback bar ----
+static void renderFeedback() {
+    if (g_feedback.empty()) return;
+    ImGui::Spacing();
+    ImVec4 col = g_feedbackOk ? C::TEAL : C::RED;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, g_feedbackOk
+        ? hex(0.176f, 0.831f, 0.749f, 0.10f)
+        : hex(0.973f, 0.443f, 0.443f, 0.10f));
+    ImGui::BeginChild("##feedback", { 0.f, 32.f }, false);
+    ImGui::SetCursorPosY(7.f);
+    ImGui::TextColored(col, "  %s", g_feedback.c_str());
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20.f);
+    ImGui::PushStyleColor(ImGuiCol_Button, C::TRANS);
+    ImGui::PushStyleColor(ImGuiCol_Text, C::T3);
+    if (ImGui::SmallButton(ICON_FA_XMARK)) g_feedback = "";
+    ImGui::PopStyleColor(2);
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
 }
 
 // ---- Public API ----
 
 void uiInit() {
+    applyStyle();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+
+    // 1. Body font
+    ImFontConfig cfg;
+    g_fontBody = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/Syne-Medium.ttf", 15.f, &cfg);
+
+    // 2. Merge Font Awesome icons into body font atlas
+    static const ImWchar fa_ranges[] = { 0xf000, 0xf8ff, 0 };
+    ImFontConfig cfgMerge;
+    cfgMerge.MergeMode = true;
+    cfgMerge.GlyphOffset = { 0, 2.f };
+    io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/fa-solid-900.ttf", 14.f, &cfgMerge, fa_ranges);
+
+    // 3. Monospace font for IDs / deadlines
+    g_fontMono = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/JetBrainsMono-Regular.ttf", 13.f);
+
+    io.Fonts->Build();
+
     loadTasksFromFile("tasks.dat");
 }
 
 void uiRender() {
-    // Full-screen main window
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
+
+    // --- Main full-screen ---
+    ImGui::SetNextWindowPos({ 0.f, 0.f });
     ImGui::SetNextWindowSize(io.DisplaySize);
-    ImGui::Begin("Titanic - Task Manager",
-                 nullptr,
-                 ImGuiWindowFlags_NoResize    |
-                 ImGuiWindowFlags_NoMove      |
-                 ImGuiWindowFlags_NoCollapse  |
-                 ImGuiWindowFlags_MenuBar);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.f, 0.f });
+    ImGui::Begin("##root",
+        nullptr,
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleVar();
 
-    // Menu bar
-    if (ImGui::BeginMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Save")) {
-                saveTasksToFile("tasks.dat");
-                feedbackMsg  = "Tasks saved to tasks.dat";
-                feedbackIsOk = true;
-            }
-            if (ImGui::MenuItem("Reload")) {
-                loadTasksFromFile("tasks.dat");
-                feedbackMsg  = "Tasks reloaded.";
-                feedbackIsOk = true;
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("Statistics", nullptr, &showStats);
-            ImGui::EndMenu();
-        }
-        ImGui::EndMenuBar();
-    }
+    // --- Sidebar + content split ---
+    renderSidebar();
+    ImGui::SameLine(0, 0);
 
-    // Feedback message
-    if (!feedbackMsg.empty()) {
-        if (feedbackIsOk) {
-            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", feedbackMsg.c_str());
-        } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", feedbackMsg.c_str());
-        }
-        ImGui::SameLine();
-        if (ImGui::SmallButton("x")) {
-            feedbackMsg = "";
-        }
-    }
+    // --- Main content panel ---
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, C::BG0);
+    ImGui::BeginChild("##content", { 0.f, 0.f }, false);
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 16.f, 12.f });
+    // Top bar
+    renderTopBar();
+    ImGui::PopStyleVar();
+
+    ImGui::SetCursorPosX(16.f);
+    ImGui::BeginGroup();
+    renderFeedback();
+    renderProgressBar();
     renderAddTaskPanel();
-    renderSearchPanel();
     renderTaskTable();
-    renderEditModal();
+    ImGui::EndGroup();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
 
     ImGui::End();
 
+    // --- Floating windows ---
+    renderEditModal();
     renderStatsWindow();
 }
 

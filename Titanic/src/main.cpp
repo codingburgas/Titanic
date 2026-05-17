@@ -30,8 +30,8 @@ int main() {
 #endif
 
     GLFWwindow* window = glfwCreateWindow(1280, 720,
-                                          "Titanic - Task Manager",
-                                          nullptr, nullptr);
+        "Titanic - Task Manager",
+        nullptr, nullptr);
     if (window == nullptr) {
         std::cerr << "Failed to create GLFW window." << std::endl;
         glfwTerminate();
@@ -46,15 +46,9 @@ int main() {
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-    // Dark theme
     ImGui::StyleColorsDark();
-
-    // Setup platform/renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
-
-    // Optional: load a nicer font size
     io.Fonts->AddFontDefault();
 
     // ---- Initialize application UI ----
@@ -64,15 +58,12 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        // Start new ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Render our UI
         uiRender();
 
-        // Render ImGui draw data
         ImGui::Render();
 
         int displayW, displayH;
